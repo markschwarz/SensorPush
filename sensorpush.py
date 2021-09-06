@@ -36,7 +36,8 @@ import argparse
 import configparser
 from requests.adapters import HTTPAdapter
 from pprint import pprint
-from influxdb import InfluxDBClient
+from influxdb_client import InfluxDBClient, Point, WritePrecision
+from influxdb_client.client.write_api import SYNCHRONOUS
 from pathlib import Path
 
 # __version__ = '1.3.0'
@@ -86,11 +87,10 @@ else:
 
 LOGIN = config['SONSORPUSHAPI']['LOGIN']
 PASSWD = config['SONSORPUSHAPI']['PASSWD']
-IFDB_IP = config['INFLUXDBCONF']['IFDB_IP']
-IFDB_PORT = int(config['INFLUXDBCONF']['IFDB_PORT'])
-IFDB_USER = config['INFLUXDBCONF']['IFDB_USER']
-IFDB_PW = config['INFLUXDBCONF']['IFDB_PW']
-IFDB_DB = config['INFLUXDBCONF']['IFDB_DB']
+IFDB_URL = config['INFLUXDBCONF']['IFDB_URL']
+IFDB_TOKEN = config['INFLUXDBCONF']['IFDB_TOKEN']
+IFDB_ORG = config['INFLUXDBCONF']['IFDB_ORG']
+IFDB_BUCKET = config['INFLUXDBCONF']['IFDB_BUCKET']
 MY_ALTITUDE = config['MISC']['MY_ALTITUDE']
 
 try:
@@ -137,7 +137,7 @@ parser.add_argument(
     dest='qlimit',
     default='0',
     type=int,
-    help='Number of samples to return per sensor (default unset = API default limimt [10])')
+    help='Number of samples to return per sensor (default unset = API default limit [10])')
 parser.add_argument('-d',
                     '--delay',
                     dest='delay',
@@ -237,11 +237,8 @@ def kPa_to_mBar(kPa):
         return mBar
 
 # Initiate the InfluxDB client ------------------------------------------------
-ifdbc = InfluxDBClient(host=IFDB_IP,
-                       port=IFDB_PORT,
-                       username=IFDB_USER,
-                       password=IFDB_PW,
-                       database=IFDB_DB)
+ifdbc = InfluxDBClient(url=IFDB_URL,token=IFDB_TOKEN)
+write_api = ifdbc.write_api(write_options=SYNCHRONOUS)
 
 
 # Try to get the proper UTC time offseet --------------------------------------
@@ -454,7 +451,7 @@ else:
         pprint(
             '------------------------------------------------------')
     else:
-        ifdbc.write_points(measurement_v)
+        write_api.write(IFDB_BUCKET, IFDB_ORG, measurement_v)
 # names = [sensors[key]['name'] for key in sensors.keys()]
 
 # Get samples -----------------------------------------------------------------
@@ -583,8 +580,7 @@ for item in timelist:
                 pprint(
                     '------------------------------------------------------')
             else:
-                ifdbc.write_points(measurement)
-
+                write_api.write(IFDB_BUCKET, IFDB_ORG, measurement)
             iteration += 1
 
             if iterations > 1:

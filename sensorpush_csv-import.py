@@ -37,7 +37,8 @@ import argparse
 import configparser
 import math
 from pprint import pprint
-from influxdb import InfluxDBClient
+from influxdb_client import InfluxDBClient, Point, WritePrecision
+from influxdb_client.client.write_api import SYNCHRONOUS
 from pathlib import Path
 from itertools import zip_longest
 
@@ -54,22 +55,20 @@ config = configparser.ConfigParser()
 
 if not Path(CONFIGFILE).is_file():
     config['INFLUXDBCONF'] = {
-        'IFDB_IP': 'InfluxDP IP',
-        'IFDB_PORT': 'InfluxDP port',
-        'IFDB_USER': 'InfluxDP user',
-        'IFDB_PW': 'InfluxDB password',
-        'IFDB_DB': 'InfluxDP database'
+        'IFDB_URL': 'InfluxDBURL',
+        'IFDB_TOKEN': 'InfluxDP_auth_token',
+        'IFDB_ORG': 'InfluxDP user',
+        'IFDB_BUCKET': 'InfluxDB password'
     }
     with open(CONFIGFILE, 'w') as f:
         config.write(f)
 else:
     config.read(CONFIGFILE)
 
-IFDB_IP = config['INFLUXDBCONF']['IFDB_IP']
-IFDB_PORT = int(config['INFLUXDBCONF']['IFDB_PORT'])
-IFDB_USER = config['INFLUXDBCONF']['IFDB_USER']
-IFDB_PW = config['INFLUXDBCONF']['IFDB_PW']
-IFDB_DB = config['INFLUXDBCONF']['IFDB_DB']
+IFDB_URL = config['INFLUXDBCONF']['IFDB_URL']
+IFDB_TOKEN = config['INFLUXDBCONF']['IFDB_TOKEN']
+IFDB_ORG = config['INFLUXDBCONF']['IFDB_ORG']
+IFDB_BUCKET = config['INFLUXDBCONF']['IFDB_BUCKET']
 
 parser = argparse.ArgumentParser(
     description='Reads a CSV file exported from the SensorPush Android App and\
@@ -145,12 +144,8 @@ def local_time_offset(t=None):
         return -time.timezone / 3600
 
 
-ifdbc = InfluxDBClient(host=IFDB_IP,
-                       port=IFDB_PORT,
-                       username=IFDB_USER,
-                       password=IFDB_PW,
-                       database=IFDB_DB)
-
+ifdbc = InfluxDBClient(url=IFDB_URL,token=IFDB_TOKEN)
+write_api = ifdbc.write_api(write_options=SYNCHRONOUS)
 
 # Try to get the proper UTC time offseet --------------------------------------
 mytz = datetime.timezone(datetime.timedelta(hours=local_time_offset()))
@@ -169,7 +164,7 @@ with open(csvfile) as csv_file:
         else:
             dtime = datetime.datetime.strptime(
                 row[0],
-                '%Y-%m-%d %H:%M').isoformat()
+                '%Y-%m-%d %H:%M:%S').isoformat()
             celsius = float(row[1].replace(',', '.'))
             hum = float(row[2].replace(',', '.'))
             measurement.extend([
@@ -184,7 +179,7 @@ with open(csvfile) as csv_file:
                                    'humidity': hum,
                                },
                                # 'observed': '2019-07-26T15:09:18.000Z
-                               'time': dtime
+                               'time': time
                                }
             ])
             line_count += 1
@@ -209,7 +204,8 @@ for item in g:
             pprint('--------------------')
             pprint('')
         else:
-            ifdbc.write_points(b)
+            write_api.write(IFDB_BUCKET, IFDB_ORG, b)
+
     else:
         pprint('Nothing to write for this chunk')
 
